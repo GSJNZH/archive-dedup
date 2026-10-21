@@ -328,7 +328,7 @@ def test_verify_ok(base):
                 text = handle.read()
             check("报告含项目名称", "项目名称:" in text)
             check("报告含未归档统计", "未归档(应有): 3" in text)
-            check("报告含文件指纹", "head=" in text)
+            check("报告含文件指纹", "fp=" in text)
             check("报告含集合指纹", "输出集合指纹" in text)
 
     rc, data, stdout, stderr = run_cli(
@@ -510,6 +510,16 @@ def test_output_inside_source_copy(base):
           bool(data) and os.path.isfile(data.get("report") or ""), repr(data))
 
 
+def test_report_fingerprint():
+    head = "a" * 32
+    k1 = (100, head, "b" * 32)
+    k2 = (100, head, "c" * 32)
+    f1 = archive_dedup.report_fingerprint(k1, archive_dedup.MODE_FAST)
+    f2 = archive_dedup.report_fingerprint(k2, archive_dedup.MODE_FAST)
+    check("头相同尾不同时指纹不同", f1 != f2, f1 + " / " + f2)
+    check("快速指纹带 fp= 前缀", f1.startswith("fp="), f1)
+
+
 def main():
     if not os.path.isfile(CLI):
         print("找不到 " + CLI)
@@ -571,6 +581,9 @@ def main():
 
         print("[18] 输出目录在原素材内部")
         test_output_inside_source_copy(new_case_dir())
+
+        print("[19] 报告指纹组合")
+        test_report_fingerprint()
     finally:
         shutil.rmtree(TMP_ROOT, ignore_errors=True)
 

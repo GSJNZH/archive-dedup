@@ -288,8 +288,11 @@ def report_fingerprint(key, mode):
     if mode == MODE_TURBO:
         return "size+mtime:%d" % key[1]
     if mode == MODE_FAST:
-        return "head=%s tail=%s" % (key[1], key[2])
-    return "md5=%s" % key[1]
+        # 单个指纹由 大小 + 头 64KB MD5 + 尾 64KB MD5 组合而成。
+        # 不额外读盘，但能避免“头相同”看起来像同一个文件。
+        raw = "%d|%s|%s" % (key[0], key[1], key[2])
+        return "fp=" + hashlib.md5(raw.encode("utf-8")).hexdigest()
+    return "md5=" + key[1]
 
 
 def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expected):
@@ -336,7 +339,8 @@ def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expect
                      % (index, safe_rel, fmt_size(size), report_fingerprint(key, mode)))
 
     if mode == MODE_FAST:
-        fingerprint_note = "快速模式 = 文件头 64KB MD5 + 文件尾 64KB MD5。"
+        fingerprint_note = ("快速指纹 = MD5(大小|头64KB MD5|尾64KB MD5)；"
+                            "头相同、尾不同也会得到不同值。")
     elif mode == MODE_EXACT:
         fingerprint_note = "精确模式 = 文件全量 MD5。"
     else:
