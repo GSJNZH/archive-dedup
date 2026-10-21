@@ -4,10 +4,14 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)
 ![Dependencies](https://img.shields.io/badge/dependencies-standard%20library-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Build](https://github.com/GSJNZH/archive-dedup/actions/workflows/build-windows.yml/badge.svg)
 
 按内容指纹对比「剪辑归档文件夹」和「原素材文件夹」，把原素材中**未被归档覆盖**的文件，按原相对目录复制/移动到「未归档补充」目录。上传百度网盘时只需上传「归档文件夹 + 未归档补充」，避免同一素材在两个路径下各占一份配额。
 
+![界面](docs/ui.png)
+
 - 平台：Windows 11
+- 版本：1.3.0
 - 运行环境：Python 3.10+（已在 3.12.14 实测），仅标准库
 - 依赖：`tkinter`（GUI 需要，Windows 官方 Python 自带）
 - 默认不删除、不改动原素材
@@ -70,6 +74,13 @@
 | `archive_dedup.py` | GUI 主程序（tkinter），也是核心逻辑所在 |
 | `archive_dedup_cli.py` | 无界面 CLI 封装，复用 `worker()`，供计划任务/批处理/无界面环境调用 |
 | `selftest.py` | 自测脚本：临时目录跑三种模式、复制、移动、排除规则 |
+| `assets/app.ico` | 应用图标，也用于 exe 图标 |
+| `assets/app.png` | 界面左上角 Logo |
+| `docs/ui.png` | README 界面截图 |
+| `build.ps1` | 本地一键构建 exe |
+| `version_info.txt` | exe 的 Windows 文件版本信息 |
+| `requirements-build.txt` | 构建依赖（仅 PyInstaller） |
+| `.github/workflows/build-windows.yml` | GitHub Actions 自动构建 Windows exe |
 | `archive_dedup_config.json` | GUI 自动生成的配置（路径、模式、并发），首次运行后出现 |
 
 `archive_dedup_cli.py` 直接 `import archive_dedup`，不复制核心逻辑；改比对/复制规则只需改 `archive_dedup.py`。
@@ -82,11 +93,13 @@
 python archive_dedup.py
 ```
 
-界面分三块：
+界面采用简洁的卡片式布局：
 
-1. **指定目录**：归档文件夹、原素材文件夹、未归档补充输出目录；每行有“浏览...”和“打开”。
-2. **选项与执行**：比对模式、复制方式、并发数、试运行、详细日志、完成后自动复查、开始/取消/复查输出。
-3. **实时日志**：逐文件输出序号、文件名、大小、指纹、已归档/未归档、累计大小、速度、剩余时间；进度条和状态栏同步。
+1. **选择目录**：归档文件夹、原素材文件夹、输出文件夹；每行有“浏览”和“打开”。
+2. **执行选项**：比对模式、处理方式、并发数、试运行、详细日志、完成后自动校验，以及“开始处理 / 校验输出 / 取消”。
+3. **运行日志**：深色日志面板，逐文件输出序号、大小、指纹、已归档/未归档、速度、剩余时间；进度条和状态栏同步。
+
+顶部显示软件版本和 GitHub 仓库链接，可直接点击打开。
 
 选好原素材文件夹后，“未归档补充输出目录”会自动填成：
 
@@ -387,6 +400,8 @@ python selftest.py
 - 选好原素材后，输出目录默认填 `<原素材>\09_04-未使用画面`。
 - GUI 选择目录后统一用 `os.path.normpath` 规范为 Windows 反斜杠，修复默认输出出现 `D:/...\09_04` 混合斜杠的问题。
 - 校验报告的快速指纹改为单个组合指纹 `fp=MD5(大小|头|尾)`，文件头相同也不会看起来重复；不增加读盘。
+- 重做 GUI：卡片式布局、深色日志面板、应用图标、版本/GitHub 链接和 DPI 适配。
+- 新增 `build.ps1` 与 GitHub Actions Windows exe 构建/Release。
 - 路径比较统一用 `normcase`，避免 Windows 大小写导致输出目录排除失效。
 - 新增 `selftest.py`。
 
@@ -394,7 +409,49 @@ python selftest.py
 
 ---
 
-## 14. 许可证
+## 14. 构建与发布
+
+### GitHub Actions
+
+仓库自带 `build-windows.yml`，在 Windows 环境自动完成：
+
+1. `py_compile` + `selftest.py`
+2. PyInstaller 打包 GUI 和 CLI
+3. 上传 `ArchiveDedup-windows.zip`
+
+获取方式：
+
+- 打开 GitHub 仓库 → `Actions` → `build-windows` → `Run workflow`；
+- 运行结束后在该次运行的 `Artifacts` 里下载 `ArchiveDedup-windows`。
+
+如果要生成正式 Release，推送版本标签：
+
+```bat
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+工作流会自动创建 Release，并附上 `ArchiveDedup-windows.zip`。
+
+### 本地构建
+
+```bat
+.\build.ps1
+```
+
+输出：
+
+```text
+dist\ArchiveDedup.exe
+dist\ArchiveDedupCLI.exe
+dist\ArchiveDedup-windows.zip
+```
+
+exe 未做代码签名，首次运行可能出现 Windows SmartScreen 提示，属于正常现象。
+
+---
+
+## 15. 许可证
 
 MIT License，详见 [LICENSE](LICENSE)。
 

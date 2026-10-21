@@ -7,8 +7,10 @@ import shutil
 import threading
 import queue
 import ctypes
+import webbrowser
 from ctypes import wintypes
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 CHUNK_SIZE = 1024 * 1024
@@ -25,6 +27,35 @@ PROJECT_URL = "https://github.com/GSJNZH/archive-dedup"
 DEFAULT_OUTPUT_NAME = "09_04-未使用画面"
 LOG_MAX_LINES = 5000
 LOG_TRIM_LINES = 2000
+
+UI_BG = "#f1f5f9"
+UI_CARD = "#ffffff"
+UI_BORDER = "#dbe3ef"
+UI_TEXT = "#0f172a"
+UI_MUTED = "#64748b"
+UI_ACCENT = "#2563eb"
+UI_ACCENT_DARK = "#1d4ed8"
+UI_HEADER = "#0f172a"
+UI_HEADER_MUTED = "#94a3b8"
+UI_LOG_BG = "#0b1220"
+UI_LOG_FG = "#d7e3f4"
+
+
+def resource_path(rel):
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel)
+
+
+def enable_dpi_awareness():
+    if not IS_WINDOWS:
+        return
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
 MODE_TURBO = "极速(大小+修改时间,不读内容)"
 MODE_FAST = "快速(采样哈希,推荐)"
@@ -978,8 +1009,14 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("%s v%s" % (APP_NAME, APP_VERSION))
-        root.geometry("1020x760")
-        root.minsize(900, 640)
+        root.geometry("1080x840")
+        root.minsize(960, 720)
+        icon = resource_path("assets/app.ico")
+        if os.path.isfile(icon):
+            try:
+                root.iconbitmap(icon)
+            except tk.TclError:
+                pass
 
         self.queue = queue.Queue()
         self.stop_event = threading.Event()
@@ -999,76 +1036,205 @@ class App:
         self._build_ui()
         self._load_config()
 
+        self.root.update_idletasks()
+        width, height = 1080, 840
+        x = max(0, (self.root.winfo_screenwidth() - width) // 2)
+        y = max(0, (self.root.winfo_screenheight() - height) // 2)
+        self.root.geometry("%dx%d+%d+%d" % (width, height, x, y))
+
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(50, self.poll)
 
+    def _setup_styles(self):
+        families = set(tkfont.families(self.root))
+        if "Microsoft YaHei UI" in families:
+            self.font_family = "Microsoft YaHei UI"
+        elif "Segoe UI" in families:
+            self.font_family = "Segoe UI"
+        else:
+            self.font_family = "TkDefaultFont"
+        if "Cascadia Mono" in families:
+            self.mono_family = "Cascadia Mono"
+        elif "Consolas" in families:
+            self.mono_family = "Consolas"
+        else:
+            self.mono_family = "Courier New"
+
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        ff = self.font_family
+        style.configure(".", background=UI_BG, foreground=UI_TEXT, font=(ff, 10))
+        style.configure("TFrame", background=UI_BG)
+        style.configure("Card.TFrame", background=UI_CARD)
+        style.configure("Card.TLabelframe", background=UI_CARD,
+                        bordercolor=UI_BORDER, relief="solid", borderwidth=1)
+        style.configure("Card.TLabelframe.Label", background=UI_CARD,
+                        foreground=UI_TEXT, font=(ff, 11, "bold"))
+        style.configure("Card.TLabel", background=UI_CARD, foreground=UI_TEXT)
+        style.configure("Field.TLabel", background=UI_CARD,
+                        foreground=UI_MUTED, font=(ff, 9))
+        style.configure("Hint.TLabel", background=UI_CARD,
+                        foreground=UI_MUTED, font=(ff, 8))
+        style.configure("Header.TFrame", background=UI_HEADER)
+        style.configure("Header.TLabel", background=UI_HEADER)
+        style.configure("HeaderTitle.TLabel", background=UI_HEADER,
+                        foreground="#ffffff", font=(ff, 20, "bold"))
+        style.configure("HeaderSub.TLabel", background=UI_HEADER,
+                        foreground=UI_HEADER_MUTED, font=(ff, 9))
+        style.configure("HeaderVersion.TLabel", background=UI_HEADER,
+                        foreground="#cbd5e1", font=(ff, 9))
+        style.configure("HeaderLink.TLabel", background=UI_HEADER,
+                        foreground="#93c5fd", font=(ff, 9, "underline"))
+        style.configure("TEntry", fieldbackground="#ffffff", bordercolor=UI_BORDER,
+                        lightcolor=UI_BORDER, darkcolor=UI_BORDER, padding=6)
+        style.map("TEntry", bordercolor=[("focus", UI_ACCENT)])
+        style.configure("TCombobox", fieldbackground="#ffffff", background="#ffffff",
+                        bordercolor=UI_BORDER, padding=5)
+        style.configure("TCheckbutton", background=UI_CARD, foreground=UI_TEXT,
+                        font=(ff, 9))
+        style.map("TCheckbutton", background=[("active", UI_CARD)])
+        style.configure("Accent.TButton", background=UI_ACCENT, foreground="#ffffff",
+                        padding=(20, 9), font=(ff, 10, "bold"), borderwidth=0)
+        style.map("Accent.TButton",
+                  background=[("active", UI_ACCENT_DARK), ("disabled", "#93c5fd")],
+                  foreground=[("disabled", "#eff6ff")])
+        style.configure("Secondary.TButton", background=UI_CARD, foreground=UI_TEXT,
+                        padding=(14, 8), bordercolor=UI_BORDER, font=(ff, 9))
+        style.map("Secondary.TButton", background=[("active", "#f8fafc")])
+        style.configure("Ghost.TButton", background=UI_CARD, foreground=UI_MUTED,
+                        padding=(8, 6), borderwidth=0, font=(ff, 9))
+        style.map("Ghost.TButton", foreground=[("active", UI_ACCENT)])
+        style.configure("Status.TLabel", background=UI_BG, foreground=UI_MUTED,
+                        font=(ff, 9))
+        style.configure("Horizontal.TProgressbar", troughcolor="#e2e8f0",
+                        background=UI_ACCENT, bordercolor="#e2e8f0",
+                        lightcolor=UI_ACCENT, darkcolor=UI_ACCENT, thickness=8)
+
     def _build_ui(self):
-        frm = ttk.LabelFrame(self.root, text="1. 指定目录")
-        frm.pack(fill="x", padx=10, pady=8)
-        frm.columnconfigure(1, weight=1)
+        self.root.configure(bg=UI_BG)
+        self._setup_styles()
 
-        self._add_path_row(frm, 0, "归档文件夹\n(含工程+已打包素材):",
-                           self.archive_var, self._pick_archive, self._open_archive)
-        self._add_path_row(frm, 1, "原素材文件夹:",
-                           self.source_var, self._pick_source, self._open_source)
-        self._add_path_row(frm, 2, "未归档补充\n输出目录:",
-                           self.output_var, self._pick_output, self._open_output)
+        header = ttk.Frame(self.root, style="Header.TFrame")
+        header.pack(fill="x")
+        header_inner = ttk.Frame(header, style="Header.TFrame")
+        header_inner.pack(fill="x", padx=26, pady=18)
+        title_box = ttk.Frame(header_inner, style="Header.TFrame")
+        title_box.pack(side="left")
+        logo_path = resource_path("assets/app.png")
+        if os.path.isfile(logo_path):
+            try:
+                self.logo_image = tk.PhotoImage(file=logo_path).subsample(4, 4)
+                ttk.Label(title_box, image=self.logo_image,
+                          style="Header.TLabel").pack(side="left", padx=(0, 14))
+            except tk.TclError:
+                pass
+        text_box = ttk.Frame(title_box, style="Header.TFrame")
+        text_box.pack(side="left")
+        ttk.Label(text_box, text="素材归档去重", style="HeaderTitle.TLabel").pack(anchor="w")
+        ttk.Label(text_box,
+                  text="按内容指纹筛出未归档素材，自动校验并生成报告",
+                  style="HeaderSub.TLabel").pack(anchor="w", pady=(3, 0))
 
-        opt = ttk.LabelFrame(self.root, text="2. 选项与执行")
-        opt.pack(fill="x", padx=10, pady=4)
+        right_box = ttk.Frame(header_inner, style="Header.TFrame")
+        right_box.pack(side="right")
+        ttk.Label(right_box, text="v%s" % APP_VERSION,
+                  style="HeaderVersion.TLabel").pack(anchor="e")
+        link = ttk.Label(right_box, text="GitHub  ↗", style="HeaderLink.TLabel",
+                         cursor="hand2")
+        link.pack(anchor="e", pady=(5, 0))
+        link.bind("<Button-1>", lambda event: webbrowser.open(PROJECT_URL))
 
-        row1 = ttk.Frame(opt)
-        row1.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row1, text="比对:").pack(side="left", padx=(4, 2))
+        body = ttk.Frame(self.root, style="TFrame")
+        body.pack(fill="both", expand=True, padx=20, pady=16)
+
+        dir_card = ttk.LabelFrame(body, text="1  选择目录", style="Card.TLabelframe",
+                                  padding=(18, 12))
+        dir_card.pack(fill="x", pady=(0, 12))
+        dir_card.columnconfigure(1, weight=1)
+        self._add_path_row(dir_card, 0, "归档文件夹", self.archive_var,
+                           self._pick_archive, self._open_archive)
+        self._add_path_row(dir_card, 1, "原素材文件夹", self.source_var,
+                           self._pick_source, self._open_source)
+        self._add_path_row(dir_card, 2, "输出文件夹", self.output_var,
+                           self._pick_output, self._open_output)
+        ttk.Label(dir_card,
+                  text="默认输出：<原素材文件夹>\\09_04-未使用画面",
+                  style="Hint.TLabel").grid(row=3, column=1, sticky="w", pady=(0, 2))
+
+        opt = ttk.LabelFrame(body, text="2  执行选项", style="Card.TLabelframe",
+                             padding=(18, 14))
+        opt.pack(fill="x", pady=(0, 10))
+
+        row1 = ttk.Frame(opt, style="Card.TFrame")
+        row1.pack(fill="x")
+        ttk.Label(row1, text="比对模式", style="Field.TLabel").pack(side="left")
         ttk.Combobox(row1, textvariable=self.mode_var, values=MODES,
-                     state="readonly", width=24).pack(side="left", padx=4)
-        ttk.Label(row1, text="复制方式:").pack(side="left", padx=(12, 2))
+                     state="readonly", width=23).pack(side="left", padx=(8, 18))
+        ttk.Label(row1, text="处理方式", style="Field.TLabel").pack(side="left")
         ttk.Combobox(row1, textvariable=self.copy_var, values=COPY_MODES,
-                     state="readonly", width=32).pack(side="left", padx=4)
-        ttk.Label(row1, text="并发:").pack(side="left", padx=(12, 2))
+                     state="readonly", width=30).pack(side="left", padx=(8, 18))
+        ttk.Label(row1, text="并发", style="Field.TLabel").pack(side="left")
         ttk.Combobox(row1, textvariable=self.workers_var, values=WORKER_CHOICES,
-                     state="readonly", width=16).pack(side="left", padx=4)
+                     state="readonly", width=15).pack(side="left", padx=(8, 0))
 
-        row2 = ttk.Frame(opt)
-        row2.pack(fill="x", padx=6, pady=3)
+        row2 = ttk.Frame(opt, style="Card.TFrame")
+        row2.pack(fill="x", pady=(14, 0))
         self.dry_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="试运行(只列清单)", variable=self.dry_var).pack(
-            side="left", padx=6)
+        ttk.Checkbutton(row2, text="试运行（只列清单）",
+                        variable=self.dry_var).pack(side="left", padx=(0, 14))
         self.verbose_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="详细日志", variable=self.verbose_var).pack(
-            side="left", padx=6)
+        ttk.Checkbutton(row2, text="详细日志",
+                        variable=self.verbose_var).pack(side="left", padx=(0, 14))
         self.auto_verify_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="完成后自动复查", variable=self.auto_verify_var).pack(
-            side="left", padx=6)
-        self.btn_cancel = ttk.Button(row2, text="取消", command=self.cancel, state="disabled")
-        self.btn_cancel.pack(side="right", padx=6)
-        self.btn_start = ttk.Button(row2, text="开始", command=self.start)
-        self.btn_start.pack(side="right", padx=6)
-        self.btn_verify = ttk.Button(row2, text="复查输出", command=self.verify)
-        self.btn_verify.pack(side="right", padx=6)
+        ttk.Checkbutton(row2, text="完成后自动校验",
+                        variable=self.auto_verify_var).pack(side="left")
 
-        prog = ttk.Frame(self.root)
-        prog.pack(fill="x", padx=10, pady=6)
-        self.progress = ttk.Progressbar(prog, maximum=100)
+        self.btn_cancel = ttk.Button(row2, text="取消", command=self.cancel,
+                                     state="disabled", style="Ghost.TButton")
+        self.btn_cancel.pack(side="right", padx=(8, 0))
+        self.btn_verify = ttk.Button(row2, text="校验输出", command=self.verify,
+                                     style="Secondary.TButton")
+        self.btn_verify.pack(side="right", padx=(8, 0))
+        self.btn_start = ttk.Button(row2, text="开始处理", command=self.start,
+                                    style="Accent.TButton")
+        self.btn_start.pack(side="right")
+
+        status = ttk.Frame(body, style="TFrame")
+        status.pack(fill="x", pady=(0, 8))
+        self.progress = ttk.Progressbar(status, maximum=100,
+                                        style="Horizontal.TProgressbar")
         self.progress.pack(side="left", fill="x", expand=True)
         self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(prog, textvariable=self.status_var, width=48).pack(side="left", padx=8)
+        ttk.Label(status, textvariable=self.status_var, style="Status.TLabel",
+                  width=42, anchor="e").pack(side="left", padx=(12, 0))
 
-        logfrm = ttk.LabelFrame(self.root, text="3. 实时日志 / 文件清单")
-        logfrm.pack(fill="both", expand=True, padx=10, pady=8)
-        self.log = scrolledtext.ScrolledText(logfrm, height=18, wrap="none")
-        self.log.pack(fill="both", expand=True, padx=4, pady=4)
+        logfrm = ttk.LabelFrame(body, text="3  运行日志", style="Card.TLabelframe",
+                                padding=(10, 10))
+        logfrm.pack(fill="both", expand=True)
+        self.log = scrolledtext.ScrolledText(
+            logfrm, height=14, wrap="none", font=(self.mono_family, 9),
+            bg=UI_LOG_BG, fg=UI_LOG_FG, insertbackground="#ffffff",
+            relief="flat", borderwidth=0, padx=10, pady=8)
+        self.log.pack(fill="both", expand=True)
         self.log.configure(state="disabled")
+        self._append_logs([
+            "素材归档去重工具 v%s 已就绪。" % APP_VERSION,
+            "选择三个目录后，先“试运行”确认清单，再开始处理。",
+            "处理完成后会自动校验，并在输出目录生成校验报告。",
+        ])
 
     def _add_path_row(self, parent, row, label, var, on_pick, on_open):
-        ttk.Label(parent, text=label, justify="left").grid(
-            row=row, column=0, sticky="w", padx=8, pady=6)
+        ttk.Label(parent, text=label, style="Card.TLabel").grid(
+            row=row, column=0, sticky="w", padx=(0, 14), pady=7)
         ttk.Entry(parent, textvariable=var).grid(
-            row=row, column=1, sticky="ew", padx=8, pady=6)
-        ttk.Button(parent, text="浏览...", command=on_pick).grid(
-            row=row, column=2, padx=4, pady=6)
-        ttk.Button(parent, text="打开", command=on_open, width=6).grid(
-            row=row, column=3, padx=4, pady=6)
+            row=row, column=1, sticky="ew", pady=7)
+        ttk.Button(parent, text="浏览", style="Secondary.TButton",
+                   command=on_pick).grid(row=row, column=2, padx=(8, 4), pady=7)
+        ttk.Button(parent, text="打开", style="Ghost.TButton",
+                   command=on_open).grid(row=row, column=3, pady=7)
 
     @staticmethod
     def _path_text(var):
@@ -1474,10 +1640,7 @@ class App:
 
 
 if __name__ == "__main__":
+    enable_dpi_awareness()
     root = tk.Tk()
-    try:
-        ttk.Style().theme_use("vista")
-    except Exception:
-        pass
     App(root)
     root.mainloop()
