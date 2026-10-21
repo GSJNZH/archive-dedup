@@ -13,6 +13,7 @@ dist/
 archive_dedup_config.json
 archive_dedup_config.json.bak*
 archive_dedup.py.bak*
+归档完整性校验报告.txt
 复查报告.txt
 _archive_dedup_manifest.json
 *.part

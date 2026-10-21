@@ -22,6 +22,7 @@ import threading
 import time
 
 from archive_dedup import (
+    APP_VERSION,
     COPY_MODE_COPY,
     COPY_MODE_MOVE,
     MODE_EXACT,
@@ -99,7 +100,8 @@ def build_parser():
                         help="同盘移动时跳过交互确认（非交互环境必须加）")
     parser.add_argument("--force", action="store_true",
                         help="输出目录非空时仍然继续（可能混入旧文件）")
-    parser.add_argument("--version", action="version", version="archive_dedup_cli 1.2.0")
+    parser.add_argument("--version", action="version",
+                        version="archive_dedup_cli %s" % APP_VERSION)
     return parser
 
 
@@ -114,8 +116,14 @@ def main(argv=None):
     archive = _norm(args.archive)
     source = _norm(args.source)
     output = _norm(args.output)
-    output_display = os.path.normpath(os.path.abspath(
-        os.path.expanduser(strip_quotes(args.output))))
+
+    def _display(path):
+        return os.path.normpath(os.path.abspath(
+            os.path.expanduser(strip_quotes(path))))
+
+    archive_display = _display(args.archive)
+    source_display = _display(args.source)
+    output_display = _display(args.output)
 
     log_stream = sys.stderr if args.json else sys.stdout
 
@@ -193,10 +201,11 @@ def main(argv=None):
     def run_worker():
         try:
             if args.verify:
-                verify_worker(archive, source, output, mode, args.verbose,
-                              msg_queue, stop_event)
+                verify_worker(archive_display, source_display, output_display,
+                              mode, args.verbose, msg_queue, stop_event)
             else:
-                worker(archive, source, output, args.dry_run, args.verbose,
+                worker(archive_display, source_display, output_display,
+                       args.dry_run, args.verbose,
                        mode, copy_mode, args.workers, msg_queue, stop_event)
         except BaseException as exc:  # worker 内部已捕获 Exception，这里兜底
             msg_queue.put(("error", "%s: %s" % (type(exc).__name__, exc)))

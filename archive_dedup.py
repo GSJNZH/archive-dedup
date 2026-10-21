@@ -15,7 +15,13 @@ CHUNK_SIZE = 1024 * 1024
 SAMPLE_SIZE = 64 * 1024
 CONFIG_NAME = "archive_dedup_config.json"
 MANIFEST_NAME = "_archive_dedup_manifest.json"
-REPORT_NAME = "复查报告.txt"
+REPORT_NAME = "归档完整性校验报告.txt"
+LEGACY_REPORT_NAMES = ("复查报告.txt",)
+IGNORED_OUTPUT_NAMES = (MANIFEST_NAME, REPORT_NAME) + LEGACY_REPORT_NAMES
+IGNORED_OUTPUT_NAMES_LOWER = {name.lower() for name in IGNORED_OUTPUT_NAMES}
+APP_NAME = "素材归档去重工具"
+APP_VERSION = "1.3.0"
+PROJECT_URL = "https://github.com/GSJNZH/archive-dedup"
 DEFAULT_OUTPUT_NAME = "09_04-未使用画面"
 LOG_MAX_LINES = 5000
 LOG_TRIM_LINES = 2000
@@ -296,7 +302,7 @@ def report_fingerprint(key, mode):
 
 
 def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expected):
-    """复查通过后，在输出目录写一份可读的 TXT 报告。"""
+    """校验通过后，在输出目录写一份可读的 TXT 报告。"""
     project = os.path.basename(os.path.normpath(source_dir)) or "未命名项目"
     digest = hashlib.sha256()
     for rel in sorted(expected):
@@ -304,11 +310,13 @@ def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expect
         digest.update(("%s\t%d\t%s\n"
                        % (rel, size, report_fingerprint(key, mode))).encode("utf-8"))
     lines = [
-        "素材归档去重 · 复查报告",
+        "素材归档去重 · 归档完整性校验报告",
         "=" * 60,
         "项目名称: " + project,
-        "复查时间: " + time.strftime("%Y-%m-%d %H:%M:%S"),
-        "复查结果: 通过",
+        "软件版本: %s v%s" % (APP_NAME, APP_VERSION),
+        "GitHub 仓库: " + PROJECT_URL,
+        "校验时间: " + time.strftime("%Y-%m-%d %H:%M:%S"),
+        "校验结果: 通过",
         "",
         "[目录]",
         "归档目录: " + archive_dir,
@@ -316,7 +324,7 @@ def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expect
         "输出目录: " + output_dir,
         "处理方式: " + stats.get("copy_mode", "未知"),
         "",
-        "[统计]",
+        "[校验统计]",
         "归档文件: %d 个 / %s" % (stats["archive_count"], fmt_size(stats["archive_bytes"])),
         "源文件: %d 个 / %s" % (stats["source_count"], fmt_size(stats["source_bytes"])),
         "已归档(跳过): %d 个 / %s" % (stats["archived_count"], fmt_size(stats["archived_bytes"])),
@@ -329,7 +337,7 @@ def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expect
         "读取失败: %d" % stats["errors"],
         "输出集合指纹(SHA256): " + digest.hexdigest(),
         "",
-        "[文件清单]",
+        "[文件校验清单]",
         "序号\t相对路径\t大小\t指纹",
     ]
     for index, rel in enumerate(sorted(expected), 1):
@@ -348,10 +356,11 @@ def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expect
 
     lines += [
         "",
-        "[说明]",
+        "[校验说明]",
         "比对模式: " + mode,
         "指纹说明: " + fingerprint_note,
-        "本报告由 archive_dedup 在复查通过后自动生成；复查时会忽略本文件。",
+        "本报告由 %s v%s 在校验通过后自动生成；后续校验时会忽略本文件。"
+        % (APP_NAME, APP_VERSION),
         "",
     ]
 
@@ -361,6 +370,13 @@ def write_verify_report(output_dir, source_dir, archive_dir, mode, stats, expect
         with open(tmp, "w", encoding="utf-8-sig") as f:
             f.write("\n".join(lines))
         os.replace(tmp, path)
+        for legacy in LEGACY_REPORT_NAMES:
+            old = os.path.join(output_dir, legacy)
+            if os.path.isfile(old):
+                try:
+                    os.remove(old)
+                except OSError:
+                    pass
         return path
     except OSError:
         try:
@@ -560,13 +576,14 @@ def worker(archive_dir, source_dir, output_dir, dry_run, verbose, mode,
                 msg_queue.put(("error", reason))
                 return
 
-        stale_report = os.path.join(output_dir, REPORT_NAME)
-        try:
-            if os.path.isfile(stale_report):
-                os.remove(stale_report)
-                emitter.log("已清除旧复查报告，等待本次复查后重新生成。")
-        except OSError as e:
-            emitter.log("警告: 无法清除旧复查报告: " + str(e))
+        for report_name in (REPORT_NAME,) + LEGACY_REPORT_NAMES:
+            stale_report = os.path.join(output_dir, report_name)
+            try:
+                if os.path.isfile(stale_report):
+                    os.remove(stale_report)
+                    emitter.log("已清除旧校验报告，等待本次校验后重新生成。")
+            except OSError as e:
+                emitter.log("警告: 无法清除旧校验报告: " + str(e))
         emitter.flush()
 
         n_u = len(unique_files)
@@ -840,7 +857,7 @@ def verify_worker(archive_dir, source_dir, output_dir, mode, verbose,
                 msg_queue.put(("done", cancelled_payload(archived_count, len(expected))))
                 return
             rel = os.path.relpath(p, output_dir)
-            if rel.lower() in (MANIFEST_NAME.lower(), REPORT_NAME.lower()):
+            if rel.lower() in IGNORED_OUTPUT_NAMES_LOWER:
                 continue
             if rel.lower().endswith(".part"):
                 part_files.append(rel)
@@ -960,7 +977,7 @@ def verify_worker(archive_dir, source_dir, output_dir, mode, verbose,
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("素材归档去重工具(内核复制/多线程/同盘移动)")
+        root.title("%s v%s" % (APP_NAME, APP_VERSION))
         root.geometry("1020x760")
         root.minsize(900, 640)
 

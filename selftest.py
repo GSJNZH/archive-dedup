@@ -311,6 +311,8 @@ def test_verify_ok(base):
     archive, source, out = build_tree(base)
     rc, data, stdout, stderr = run_cli(archive, source, out, "--json")
     check("复查准备复制成功", rc == 0, stderr[-300:])
+    legacy = os.path.join(out, archive_dedup.LEGACY_REPORT_NAMES[0])
+    write_file(legacy, b"old report")
 
     rc, data, stdout, stderr = run_cli(archive, source, out, "--verify", "--json")
     check("复查通过退出码 0", rc == 0, stderr[-300:])
@@ -323,6 +325,10 @@ def test_verify_ok(base):
               and data.get("extra") == 0 and data.get("part") == 0, repr(data))
         report = data.get("report") or ""
         check("复查报告已生成", bool(report) and os.path.isfile(report), repr(report))
+        check("报告文件名正确",
+              os.path.basename(report) == archive_dedup.REPORT_NAME,
+              os.path.basename(report))
+        check("旧报告已移除", not os.path.exists(legacy))
         if report and os.path.isfile(report):
             with open(report, "r", encoding="utf-8-sig") as handle:
                 text = handle.read()
