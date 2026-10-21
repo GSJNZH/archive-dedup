@@ -527,6 +527,11 @@ def test_report_fingerprint():
 
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     if not os.path.isfile(CLI):
         print("找不到 " + CLI)
         return 1
