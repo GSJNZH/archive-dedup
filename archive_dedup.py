@@ -28,17 +28,18 @@ DEFAULT_OUTPUT_NAME = "09_04-未使用画面"
 LOG_MAX_LINES = 5000
 LOG_TRIM_LINES = 2000
 
-UI_BG = "#f1f5f9"
+UI_BG = "#f5f5f7"
 UI_CARD = "#ffffff"
-UI_BORDER = "#dbe3ef"
-UI_TEXT = "#0f172a"
-UI_MUTED = "#64748b"
-UI_ACCENT = "#2563eb"
-UI_ACCENT_DARK = "#1d4ed8"
-UI_HEADER = "#0f172a"
-UI_HEADER_MUTED = "#94a3b8"
-UI_LOG_BG = "#0b1220"
-UI_LOG_FG = "#d7e3f4"
+UI_BORDER = "#e5e5ea"
+UI_TEXT = "#1d1d1f"
+UI_MUTED = "#6e6e73"
+UI_ACCENT = "#0071e3"
+UI_ACCENT_DARK = "#0077ed"
+UI_FIELD = "#f2f2f7"
+UI_GREEN = "#34c759"
+UI_SHADOW = "#e8e8ed"
+UI_LOG_BG = "#fbfbfd"
+UI_LOG_FG = "#1d1d1f"
 
 
 def resource_path(rel):
@@ -69,6 +70,201 @@ COPY_MODES = [COPY_MODE_COPY, COPY_MODE_MOVE]
 WORKER_CHOICES = ["1 (机械盘推荐)", "2", "4", "8 (SSD可试)"]
 
 IS_WINDOWS = (os.name == "nt")
+
+
+def _round_points(x1, y1, x2, y2, radius):
+    radius = max(1, min(radius, (x2 - x1) / 2, (y2 - y1) / 2))
+    return [
+        x1 + radius, y1,
+        x2 - radius, y1,
+        x2, y1,
+        x2, y1 + radius,
+        x2, y2 - radius,
+        x2, y2,
+        x2 - radius, y2,
+        x1 + radius, y2,
+        x1, y2,
+        x1, y2 - radius,
+        x1, y1 + radius,
+        x1, y1,
+    ]
+
+
+class RoundedPanel(tk.Canvas):
+    """白色圆角卡片，内部放一个 tk.Frame。"""
+
+    def __init__(self, parent, height=180, radius=18, padding=20):
+        super().__init__(parent, height=height, bg=UI_BG,
+                         highlightthickness=0, bd=0)
+        self.radius = radius
+        self.padding = padding
+        self.inner = tk.Frame(self, bg=UI_CARD)
+        self._window = self.create_window(padding, padding, anchor="nw",
+                                          window=self.inner)
+        self.bind("<Configure>", self._redraw)
+
+    def _redraw(self, event=None):
+        width = max(self.winfo_width(), 10)
+        height = max(self.winfo_height(), 10)
+        self.delete("panel")
+        self.create_polygon(_round_points(1, 3, width - 1, height - 1, self.radius),
+                            smooth=True, splinesteps=36,
+                            fill=UI_SHADOW, outline="", tags="panel")
+        self.create_polygon(_round_points(1, 1, width - 1, height - 3, self.radius),
+                            smooth=True, splinesteps=36,
+                            fill=UI_CARD, outline=UI_BORDER, width=1,
+                            tags="panel")
+        self.tag_lower("panel")
+        self.itemconfigure(self._window,
+                           width=max(20, width - self.padding * 2),
+                           height=max(20, height - self.padding * 2))
+
+
+class RoundedButton(tk.Canvas):
+    """扁平圆角按钮，兼容 Tk 的 config(state=...)。"""
+
+    def __init__(self, parent, text, command, kind="primary",
+                 width=120, height=38, font=None):
+        try:
+            bg = parent.cget("bg")
+        except Exception:
+            bg = UI_CARD
+        super().__init__(parent, width=width, height=height, bg=bg,
+                         highlightthickness=0, bd=0, cursor="hand2")
+        self._text = text
+        self._command = command
+        self._kind = kind
+        self._bw = width
+        self._bh = height
+        self._font = font or ("Segoe UI", 10)
+        self._state = "normal"
+        self._hover = False
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self._draw()
+
+    def _palette(self):
+        if self._state == "disabled":
+            if self._kind == "primary":
+                return "#e5e5ea", "#8e8e93", ""
+            if self._kind == "ghost":
+                return "", "#aeaeb2", ""
+            return UI_FIELD, "#c7c7cc", ""
+        if self._kind == "primary":
+            return (UI_ACCENT_DARK if self._hover else UI_ACCENT), "#ffffff", ""
+        if self._kind == "secondary":
+            return ("#e8e8ed" if self._hover else UI_FIELD), UI_TEXT, ""
+        return "", (UI_ACCENT if self._hover else UI_MUTED), ""
+
+    def _draw(self):
+        self.delete("all")
+        fill, fg, outline = self._palette()
+        if fill:
+            self.create_polygon(_round_points(1, 1, self._bw - 1, self._bh - 1, 10),
+                                smooth=True, splinesteps=24,
+                                fill=fill, outline=outline, width=1)
+        self.create_text(self._bw / 2, self._bh / 2, text=self._text,
+                         fill=fg, font=self._font)
+
+    def _on_click(self, event):
+        if self._state != "disabled" and self._command:
+            self._command()
+
+    def _on_enter(self, event):
+        self._hover = True
+        self._draw()
+
+    def _on_leave(self, event):
+        self._hover = False
+        self._draw()
+
+    def set_state(self, state):
+        self._state = state
+        self.configure(cursor="hand2" if state != "disabled" else "arrow")
+        self._draw()
+
+    def set_text(self, text):
+        self._text = text
+        self._draw()
+
+    def config(self, **kwargs):
+        if "state" in kwargs:
+            self.set_state(kwargs.pop("state"))
+        if "text" in kwargs:
+            self.set_text(kwargs.pop("text"))
+        if kwargs:
+            super().config(**kwargs)
+
+    configure = config
+
+
+class ToggleSwitch(tk.Canvas):
+    def __init__(self, parent, variable, command=None):
+        super().__init__(parent, width=44, height=24, bg=UI_CARD,
+                         highlightthickness=0, bd=0, cursor="hand2")
+        self.variable = variable
+        self.command = command
+        self.variable.trace_add("write", lambda *args: self._draw())
+        self.bind("<Button-1>", lambda event: self.toggle())
+        self._draw()
+
+    def toggle(self):
+        self.variable.set(not self.variable.get())
+        if self.command:
+            self.command()
+
+    def _draw(self):
+        self.delete("all")
+        on = bool(self.variable.get())
+        fill = UI_GREEN if on else "#e5e5ea"
+        self.create_polygon(_round_points(1, 2, 43, 22, 10),
+                            smooth=True, splinesteps=24,
+                            fill=fill, outline="")
+        x = 31 if on else 13
+        self.create_oval(x - 9, 3, x + 9, 21, fill="#ffffff", outline="")
+
+
+class PillEntry(tk.Canvas):
+    def __init__(self, parent, textvariable, font):
+        super().__init__(parent, height=38, bg=UI_CARD,
+                         highlightthickness=0, bd=0)
+        self._font = font
+        self._focused = False
+        self.entry = tk.Entry(self, textvariable=textvariable,
+                              bg=UI_FIELD, fg=UI_TEXT, relief="flat",
+                              bd=0, highlightthickness=0,
+                              insertbackground=UI_TEXT,
+                              selectbackground="#d2e3fc",
+                              selectforeground=UI_TEXT,
+                              font=font)
+        self._window = self.create_window(12, 19, anchor="w",
+                                          window=self.entry, width=100, height=24)
+        self.bind("<Configure>", self._redraw)
+        self.bind("<Button-1>", lambda event: self.entry.focus_set())
+        self.entry.bind("<FocusIn>", self._on_focus_in)
+        self.entry.bind("<FocusOut>", self._on_focus_out)
+
+    def _redraw(self, event=None):
+        width = max(self.winfo_width(), 10)
+        height = max(self.winfo_height(), 10)
+        self.delete("bg")
+        self.create_polygon(_round_points(1, 1, width - 1, height - 1, 10),
+                            smooth=True, splinesteps=24,
+                            fill=UI_FIELD,
+                            outline=(UI_ACCENT if self._focused else UI_FIELD),
+                            width=1, tags="bg")
+        self.tag_lower("bg")
+        self.itemconfigure(self._window, width=max(20, width - 24), height=24)
+
+    def _on_focus_in(self, event):
+        self._focused = True
+        self._redraw()
+
+    def _on_focus_out(self, event):
+        self._focused = False
+        self._redraw()
+
 
 if IS_WINDOWS:
     _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -1009,8 +1205,8 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("%s v%s" % (APP_NAME, APP_VERSION))
-        root.geometry("1080x840")
-        root.minsize(960, 720)
+        root.geometry("1080x900")
+        root.minsize(1000, 760)
         icon = resource_path("assets/app.ico")
         if os.path.isfile(icon):
             try:
@@ -1037,7 +1233,7 @@ class App:
         self._load_config()
 
         self.root.update_idletasks()
-        width, height = 1080, 840
+        width, height = 1080, 900
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)
         y = max(0, (self.root.winfo_screenheight() - height) // 2)
         self.root.geometry("%dx%d+%d+%d" % (width, height, x, y))
@@ -1067,158 +1263,152 @@ class App:
             pass
         ff = self.font_family
         style.configure(".", background=UI_BG, foreground=UI_TEXT, font=(ff, 10))
-        style.configure("TFrame", background=UI_BG)
-        style.configure("Card.TFrame", background=UI_CARD)
-        style.configure("Card.TLabelframe", background=UI_CARD,
-                        bordercolor=UI_BORDER, relief="solid", borderwidth=1)
-        style.configure("Card.TLabelframe.Label", background=UI_CARD,
-                        foreground=UI_TEXT, font=(ff, 11, "bold"))
-        style.configure("Card.TLabel", background=UI_CARD, foreground=UI_TEXT)
-        style.configure("Field.TLabel", background=UI_CARD,
-                        foreground=UI_MUTED, font=(ff, 9))
-        style.configure("Hint.TLabel", background=UI_CARD,
-                        foreground=UI_MUTED, font=(ff, 8))
-        style.configure("Header.TFrame", background=UI_HEADER)
-        style.configure("Header.TLabel", background=UI_HEADER)
-        style.configure("HeaderTitle.TLabel", background=UI_HEADER,
-                        foreground="#ffffff", font=(ff, 20, "bold"))
-        style.configure("HeaderSub.TLabel", background=UI_HEADER,
-                        foreground=UI_HEADER_MUTED, font=(ff, 9))
-        style.configure("HeaderVersion.TLabel", background=UI_HEADER,
-                        foreground="#cbd5e1", font=(ff, 9))
-        style.configure("HeaderLink.TLabel", background=UI_HEADER,
-                        foreground="#93c5fd", font=(ff, 9, "underline"))
-        style.configure("TEntry", fieldbackground="#ffffff", bordercolor=UI_BORDER,
-                        lightcolor=UI_BORDER, darkcolor=UI_BORDER, padding=6)
-        style.map("TEntry", bordercolor=[("focus", UI_ACCENT)])
-        style.configure("TCombobox", fieldbackground="#ffffff", background="#ffffff",
-                        bordercolor=UI_BORDER, padding=5)
-        style.configure("TCheckbutton", background=UI_CARD, foreground=UI_TEXT,
-                        font=(ff, 9))
-        style.map("TCheckbutton", background=[("active", UI_CARD)])
-        style.configure("Accent.TButton", background=UI_ACCENT, foreground="#ffffff",
-                        padding=(20, 9), font=(ff, 10, "bold"), borderwidth=0)
-        style.map("Accent.TButton",
-                  background=[("active", UI_ACCENT_DARK), ("disabled", "#93c5fd")],
-                  foreground=[("disabled", "#eff6ff")])
-        style.configure("Secondary.TButton", background=UI_CARD, foreground=UI_TEXT,
-                        padding=(14, 8), bordercolor=UI_BORDER, font=(ff, 9))
-        style.map("Secondary.TButton", background=[("active", "#f8fafc")])
-        style.configure("Ghost.TButton", background=UI_CARD, foreground=UI_MUTED,
-                        padding=(8, 6), borderwidth=0, font=(ff, 9))
-        style.map("Ghost.TButton", foreground=[("active", UI_ACCENT)])
-        style.configure("Status.TLabel", background=UI_BG, foreground=UI_MUTED,
-                        font=(ff, 9))
-        style.configure("Horizontal.TProgressbar", troughcolor="#e2e8f0",
-                        background=UI_ACCENT, bordercolor="#e2e8f0",
-                        lightcolor=UI_ACCENT, darkcolor=UI_ACCENT, thickness=8)
+        style.configure("Apple.TCombobox", fieldbackground=UI_FIELD,
+                        background=UI_FIELD, foreground=UI_TEXT,
+                        bordercolor=UI_FIELD, lightcolor=UI_FIELD,
+                        darkcolor=UI_FIELD, arrowcolor=UI_MUTED,
+                        padding=6, relief="flat")
+        style.map("Apple.TCombobox",
+                  fieldbackground=[("readonly", UI_FIELD), ("active", "#ececf1")],
+                  selectbackground=[("readonly", UI_FIELD)],
+                  selectforeground=[("readonly", UI_TEXT)],
+                  arrowcolor=[("active", UI_ACCENT)])
+        style.configure("Apple.Horizontal.TProgressbar",
+                        troughcolor="#e5e5ea", background=UI_ACCENT,
+                        bordercolor="#e5e5ea", lightcolor=UI_ACCENT,
+                        darkcolor=UI_ACCENT, thickness=5)
+        style.configure("Vertical.TScrollbar", background="#d1d1d6",
+                        troughcolor=UI_BG, bordercolor=UI_BG,
+                        arrowcolor="#8e8e93")
+        self.root.option_add("*TCombobox*Listbox.background", UI_CARD)
+        self.root.option_add("*TCombobox*Listbox.foreground", UI_TEXT)
+        self.root.option_add("*TCombobox*Listbox.selectBackground", UI_ACCENT)
+        self.root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
 
     def _build_ui(self):
         self.root.configure(bg=UI_BG)
         self._setup_styles()
+        ff = self.font_family
 
-        header = ttk.Frame(self.root, style="Header.TFrame")
-        header.pack(fill="x")
-        header_inner = ttk.Frame(header, style="Header.TFrame")
-        header_inner.pack(fill="x", padx=26, pady=18)
-        title_box = ttk.Frame(header_inner, style="Header.TFrame")
-        title_box.pack(side="left")
+        header = tk.Frame(self.root, bg=UI_BG)
+        header.pack(fill="x", padx=30, pady=(24, 6))
         logo_path = resource_path("assets/app.png")
         if os.path.isfile(logo_path):
             try:
                 self.logo_image = tk.PhotoImage(file=logo_path).subsample(4, 4)
-                ttk.Label(title_box, image=self.logo_image,
-                          style="Header.TLabel").pack(side="left", padx=(0, 14))
+                tk.Label(header, image=self.logo_image, bg=UI_BG).pack(
+                    side="left", padx=(0, 14))
             except tk.TclError:
                 pass
-        text_box = ttk.Frame(title_box, style="Header.TFrame")
-        text_box.pack(side="left")
-        ttk.Label(text_box, text="素材归档去重", style="HeaderTitle.TLabel").pack(anchor="w")
-        ttk.Label(text_box,
-                  text="按内容指纹筛出未归档素材，自动校验并生成报告",
-                  style="HeaderSub.TLabel").pack(anchor="w", pady=(3, 0))
+        title_box = tk.Frame(header, bg=UI_BG)
+        title_box.pack(side="left")
+        tk.Label(title_box, text="素材归档去重", bg=UI_BG, fg=UI_TEXT,
+                 font=(ff, 26, "bold")).pack(anchor="w")
+        tk.Label(title_box, text="按内容指纹筛出未归档素材，自动校验并生成报告",
+                 bg=UI_BG, fg=UI_MUTED, font=(ff, 10)).pack(anchor="w", pady=(2, 0))
 
-        right_box = ttk.Frame(header_inner, style="Header.TFrame")
-        right_box.pack(side="right")
-        ttk.Label(right_box, text="v%s" % APP_VERSION,
-                  style="HeaderVersion.TLabel").pack(anchor="e")
-        link = ttk.Label(right_box, text="GitHub  ↗", style="HeaderLink.TLabel",
-                         cursor="hand2")
-        link.pack(anchor="e", pady=(5, 0))
+        right = tk.Frame(header, bg=UI_BG)
+        right.pack(side="right")
+        tk.Label(right, text="v%s" % APP_VERSION, bg=UI_BG, fg=UI_MUTED,
+                 font=(ff, 10)).pack(anchor="e")
+        link = tk.Label(right, text="GitHub  ↗", bg=UI_BG, fg=UI_ACCENT,
+                        font=(ff, 10), cursor="hand2")
+        link.pack(anchor="e", pady=(3, 0))
         link.bind("<Button-1>", lambda event: webbrowser.open(PROJECT_URL))
+        link.bind("<Enter>", lambda e: link.configure(font=(ff, 10, "underline")))
+        link.bind("<Leave>", lambda e: link.configure(font=(ff, 10)))
 
-        body = ttk.Frame(self.root, style="TFrame")
-        body.pack(fill="both", expand=True, padx=20, pady=16)
+        body = tk.Frame(self.root, bg=UI_BG)
+        body.pack(fill="both", expand=True, padx=30, pady=(6, 20))
 
-        dir_card = ttk.LabelFrame(body, text="1  选择目录", style="Card.TLabelframe",
-                                  padding=(18, 12))
-        dir_card.pack(fill="x", pady=(0, 12))
-        dir_card.columnconfigure(1, weight=1)
-        self._add_path_row(dir_card, 0, "归档文件夹", self.archive_var,
+        dir_card = RoundedPanel(body, height=282, padding=22)
+        dir_card.pack(fill="x", pady=(0, 14))
+        dir_inner = dir_card.inner
+        dir_inner.grid_columnconfigure(1, weight=1)
+        self._section_header(dir_inner, "选择目录",
+                             "归档工程、原素材与未归档输出位置", 0)
+        self._add_path_row(dir_inner, 1, "归档文件夹", self.archive_var,
                            self._pick_archive, self._open_archive)
-        self._add_path_row(dir_card, 1, "原素材文件夹", self.source_var,
+        self._add_path_row(dir_inner, 2, "原素材文件夹", self.source_var,
                            self._pick_source, self._open_source)
-        self._add_path_row(dir_card, 2, "输出文件夹", self.output_var,
+        self._add_path_row(dir_inner, 3, "输出文件夹", self.output_var,
                            self._pick_output, self._open_output)
-        ttk.Label(dir_card,
-                  text="默认输出：<原素材文件夹>\\09_04-未使用画面",
-                  style="Hint.TLabel").grid(row=3, column=1, sticky="w", pady=(0, 2))
+        tk.Label(dir_inner, text="默认输出：<原素材文件夹>\\09_04-未使用画面",
+                 bg=UI_CARD, fg=UI_MUTED, font=(ff, 9)).grid(
+            row=4, column=1, columnspan=3, sticky="w", pady=(4, 0))
 
-        opt = ttk.LabelFrame(body, text="2  执行选项", style="Card.TLabelframe",
-                             padding=(18, 14))
-        opt.pack(fill="x", pady=(0, 10))
+        opt_card = RoundedPanel(body, height=222, padding=22)
+        opt_card.pack(fill="x", pady=(0, 14))
+        opt = opt_card.inner
+        self._section_header(opt, "执行选项",
+                             "选择比对强度、处理方式与运行行为", 0, 3)
 
-        row1 = ttk.Frame(opt, style="Card.TFrame")
-        row1.pack(fill="x")
-        ttk.Label(row1, text="比对模式", style="Field.TLabel").pack(side="left")
+        row1 = tk.Frame(opt, bg=UI_CARD)
+        row1.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        tk.Label(row1, text="比对模式", bg=UI_CARD, fg=UI_MUTED,
+                 font=(ff, 9)).pack(side="left")
         ttk.Combobox(row1, textvariable=self.mode_var, values=MODES,
-                     state="readonly", width=23).pack(side="left", padx=(8, 18))
-        ttk.Label(row1, text="处理方式", style="Field.TLabel").pack(side="left")
+                     state="readonly", width=22,
+                     style="Apple.TCombobox").pack(side="left", padx=(8, 20))
+        tk.Label(row1, text="处理方式", bg=UI_CARD, fg=UI_MUTED,
+                 font=(ff, 9)).pack(side="left")
         ttk.Combobox(row1, textvariable=self.copy_var, values=COPY_MODES,
-                     state="readonly", width=30).pack(side="left", padx=(8, 18))
-        ttk.Label(row1, text="并发", style="Field.TLabel").pack(side="left")
+                     state="readonly", width=29,
+                     style="Apple.TCombobox").pack(side="left", padx=(8, 20))
+        tk.Label(row1, text="并发", bg=UI_CARD, fg=UI_MUTED,
+                 font=(ff, 9)).pack(side="left")
         ttk.Combobox(row1, textvariable=self.workers_var, values=WORKER_CHOICES,
-                     state="readonly", width=15).pack(side="left", padx=(8, 0))
+                     state="readonly", width=14,
+                     style="Apple.TCombobox").pack(side="left", padx=(8, 0))
 
-        row2 = ttk.Frame(opt, style="Card.TFrame")
-        row2.pack(fill="x", pady=(14, 0))
+        row2 = tk.Frame(opt, bg=UI_CARD)
+        row2.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(16, 0))
         self.dry_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="试运行（只列清单）",
-                        variable=self.dry_var).pack(side="left", padx=(0, 14))
         self.verbose_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="详细日志",
-                        variable=self.verbose_var).pack(side="left", padx=(0, 14))
         self.auto_verify_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="完成后自动校验",
-                        variable=self.auto_verify_var).pack(side="left")
+        self._add_toggle(row2, "试运行", self.dry_var)
+        self._add_toggle(row2, "详细日志", self.verbose_var)
+        self._add_toggle(row2, "完成后自动校验", self.auto_verify_var)
 
-        self.btn_cancel = ttk.Button(row2, text="取消", command=self.cancel,
-                                     state="disabled", style="Ghost.TButton")
+        self.btn_cancel = RoundedButton(row2, "取消", self.cancel, kind="ghost",
+                                        width=70, height=38, font=(ff, 10))
+        self.btn_cancel.set_state("disabled")
         self.btn_cancel.pack(side="right", padx=(8, 0))
-        self.btn_verify = ttk.Button(row2, text="校验输出", command=self.verify,
-                                     style="Secondary.TButton")
+        self.btn_verify = RoundedButton(row2, "校验输出", self.verify,
+                                        kind="secondary", width=104, height=38,
+                                        font=(ff, 10))
         self.btn_verify.pack(side="right", padx=(8, 0))
-        self.btn_start = ttk.Button(row2, text="开始处理", command=self.start,
-                                    style="Accent.TButton")
+        self.btn_start = RoundedButton(row2, "开始处理", self.start, kind="primary",
+                                       width=112, height=38,
+                                       font=(ff, 10, "bold"))
         self.btn_start.pack(side="right")
 
-        status = ttk.Frame(body, style="TFrame")
-        status.pack(fill="x", pady=(0, 8))
+        status = tk.Frame(body, bg=UI_BG)
+        status.pack(fill="x", pady=(0, 10))
         self.progress = ttk.Progressbar(status, maximum=100,
-                                        style="Horizontal.TProgressbar")
+                                        style="Apple.Horizontal.TProgressbar")
         self.progress.pack(side="left", fill="x", expand=True)
         self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(status, textvariable=self.status_var, style="Status.TLabel",
-                  width=42, anchor="e").pack(side="left", padx=(12, 0))
+        tk.Label(status, textvariable=self.status_var, bg=UI_BG, fg=UI_MUTED,
+                 font=(ff, 9), width=40, anchor="e").pack(
+            side="left", padx=(14, 0))
 
-        logfrm = ttk.LabelFrame(body, text="3  运行日志", style="Card.TLabelframe",
-                                padding=(10, 10))
-        logfrm.pack(fill="both", expand=True)
+        log_card = RoundedPanel(body, height=120, padding=18)
+        log_card.pack(fill="both", expand=True)
+        log_inner = log_card.inner
+        head = tk.Frame(log_inner, bg=UI_CARD)
+        head.pack(fill="x")
+        tk.Label(head, text="运行日志", bg=UI_CARD, fg=UI_TEXT,
+                 font=(ff, 14, "bold")).pack(side="left")
+        tk.Label(head, text="实时输出", bg=UI_CARD, fg=UI_MUTED,
+                 font=(ff, 9)).pack(side="right")
         self.log = scrolledtext.ScrolledText(
-            logfrm, height=14, wrap="none", font=(self.mono_family, 9),
-            bg=UI_LOG_BG, fg=UI_LOG_FG, insertbackground="#ffffff",
-            relief="flat", borderwidth=0, padx=10, pady=8)
-        self.log.pack(fill="both", expand=True)
+            log_inner, height=10, wrap="none", font=(self.mono_family, 9),
+            bg=UI_LOG_BG, fg=UI_LOG_FG, insertbackground=UI_TEXT,
+            relief="flat", borderwidth=0, padx=12, pady=10,
+            highlightthickness=1, highlightbackground="#ececf1",
+            highlightcolor="#ececf1")
+        self.log.pack(fill="both", expand=True, pady=(8, 0))
         self.log.configure(state="disabled")
         self._append_logs([
             "素材归档去重工具 v%s 已就绪。" % APP_VERSION,
@@ -1226,15 +1416,43 @@ class App:
             "处理完成后会自动校验，并在输出目录生成校验报告。",
         ])
 
+    def _section_header(self, parent, title, subtitle, row=0, columns=4):
+        box = tk.Frame(parent, bg=UI_CARD)
+        box.grid(row=row, column=0, columnspan=columns, sticky="ew",
+                 pady=(0, 10))
+        tk.Label(box, text=title, bg=UI_CARD, fg=UI_TEXT,
+                 font=(self.font_family, 15, "bold")).pack(anchor="w")
+        tk.Label(box, text=subtitle, bg=UI_CARD, fg=UI_MUTED,
+                 font=(self.font_family, 9)).pack(anchor="w", pady=(2, 0))
+
     def _add_path_row(self, parent, row, label, var, on_pick, on_open):
-        ttk.Label(parent, text=label, style="Card.TLabel").grid(
-            row=row, column=0, sticky="w", padx=(0, 14), pady=7)
-        ttk.Entry(parent, textvariable=var).grid(
-            row=row, column=1, sticky="ew", pady=7)
-        ttk.Button(parent, text="浏览", style="Secondary.TButton",
-                   command=on_pick).grid(row=row, column=2, padx=(8, 4), pady=7)
-        ttk.Button(parent, text="打开", style="Ghost.TButton",
-                   command=on_open).grid(row=row, column=3, pady=7)
+        tk.Label(parent, text=label, bg=UI_CARD, fg=UI_MUTED,
+                 font=(self.font_family, 9), width=10, anchor="w").grid(
+            row=row, column=0, sticky="w", padx=(0, 12), pady=5)
+        field = PillEntry(parent, var, (self.font_family, 10))
+        field.grid(row=row, column=1, sticky="ew", pady=5)
+        browse = RoundedButton(parent, "浏览", on_pick, kind="secondary",
+                               width=66, height=34,
+                               font=(self.font_family, 9))
+        browse.grid(row=row, column=2, padx=(10, 8), pady=5)
+        link = tk.Label(parent, text="打开", bg=UI_CARD, fg=UI_ACCENT,
+                        font=(self.font_family, 9), cursor="hand2")
+        link.grid(row=row, column=3, sticky="w", pady=5)
+        link.bind("<Button-1>", lambda event: on_open())
+        link.bind("<Enter>", lambda e: link.configure(
+            font=(self.font_family, 9, "underline")))
+        link.bind("<Leave>", lambda e: link.configure(
+            font=(self.font_family, 9)))
+
+    def _add_toggle(self, parent, text, variable):
+        box = tk.Frame(parent, bg=UI_CARD)
+        box.pack(side="left", padx=(0, 18))
+        switch = ToggleSwitch(box, variable)
+        switch.pack(side="left")
+        label = tk.Label(box, text=text, bg=UI_CARD, fg=UI_TEXT,
+                         font=(self.font_family, 9), cursor="hand2")
+        label.pack(side="left", padx=(6, 0))
+        label.bind("<Button-1>", lambda event: switch.toggle())
 
     @staticmethod
     def _path_text(var):
