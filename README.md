@@ -78,6 +78,7 @@
 | `assets/app.png` | 界面左上角 Logo |
 | `docs/ui.png` | README 界面截图 |
 | `build.ps1` | 本地一键构建 exe |
+| `packaging/启动说明.txt` | 压缩包内的运行说明 |
 | `version_info.txt` | exe 的 Windows 文件版本信息 |
 | `requirements-build.txt` | 构建依赖（仅 PyInstaller） |
 | `.github/workflows/build-windows.yml` | GitHub Actions 自动构建 Windows exe |
@@ -402,6 +403,7 @@ python selftest.py
 - 校验报告的快速指纹改为单个组合指纹 `fp=MD5(大小|头|尾)`，文件头相同也不会看起来重复；不增加读盘。
 - 重做 GUI：卡片式布局、深色日志面板、应用图标、版本/GitHub 链接和 DPI 适配。
 - 新增 `build.ps1` 与 GitHub Actions Windows exe 构建/Release。
+- Windows 发布包改为 onedir，避开 onefile 在部分机器上的 `Could not create temporary directory!`。
 - 路径比较统一用 `normcase`，避免 Windows 大小写导致输出目录排除失效。
 - 新增 `selftest.py`。
 
@@ -442,10 +444,23 @@ git push origin v1.3.0
 输出：
 
 ```text
-dist\ArchiveDedup.exe
-dist\ArchiveDedupCLI.exe
+dist\ArchiveDedup\ArchiveDedup.exe
+dist\ArchiveDedupCLI\ArchiveDedupCLI.exe
 dist\ArchiveDedup-windows.zip
 ```
+
+压缩包内是 onedir 结构，解压后是：
+
+```text
+ArchiveDedup\ArchiveDedup.exe
+ArchiveDedup\_internal\...
+ArchiveDedupCLI\ArchiveDedupCLI.exe
+ArchiveDedupCLI\_internal\...
+启动说明.txt
+```
+
+onedir 不需要像 onefile 那样解压到系统临时目录，可以避开部分机器上的
+`Could not create temporary directory!` 错误。运行时请不要把 exe 单独移出所在文件夹，`_internal` 必须和 exe 放在一起。
 
 exe 未做代码签名，首次运行可能出现 Windows SmartScreen 提示，属于正常现象。
 

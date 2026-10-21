@@ -1,0 +1,20 @@
+素材归档去重工具 v1.3.0
+============================================================
+
+1. 请先完整解压整个压缩包，不要只把 exe 单独拖出来。
+   onedir 版本需要同目录下的 _internal 文件夹才能运行。
+
+2. 图形界面：
+   双击 ArchiveDedup\ArchiveDedup.exe
+
+3. 命令行版：
+   ArchiveDedupCLI\ArchiveDedupCLI.exe --help
+
+4. 如果 Windows 提示“未知发布者”，
+   点“更多信息” → “仍要运行”。
+
+5. 个人配置、校验报告和清单都在运行时生成，
+   不会包含在压缩包里。
+
+GitHub:
+https://github.com/GSJNZH/archive-dedup
