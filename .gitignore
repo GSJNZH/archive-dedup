@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+build/
+dist/
+*.spec
+
+# 本工具运行时生成
+archive_dedup_config.json
+archive_dedup_config.json.bak*
+archive_dedup.py.bak*
+复查报告.txt
+_archive_dedup_manifest.json
+*.part
+
+# 自测与调试
+_selftest_tmp/
+_gui_tmp/
+*.log
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
