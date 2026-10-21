@@ -11,11 +11,12 @@ import webbrowser
 from ctypes import wintypes
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import ttk, filedialog, messagebox, scrolledtext
+from tkinter import ttk, filedialog, messagebox
 
 CHUNK_SIZE = 1024 * 1024
 SAMPLE_SIZE = 64 * 1024
 CONFIG_NAME = "archive_dedup_config.json"
+CONFIG_VERSION = 2
 MANIFEST_NAME = "_archive_dedup_manifest.json"
 REPORT_NAME = "归档完整性校验报告.txt"
 LEGACY_REPORT_NAMES = ("复查报告.txt",)
@@ -28,18 +29,18 @@ DEFAULT_OUTPUT_NAME = "09_04-未使用画面"
 LOG_MAX_LINES = 5000
 LOG_TRIM_LINES = 2000
 
-UI_BG = "#f5f5f7"
-UI_CARD = "#ffffff"
-UI_BORDER = "#e5e5ea"
-UI_TEXT = "#1d1d1f"
-UI_MUTED = "#6e6e73"
-UI_ACCENT = "#0071e3"
-UI_ACCENT_DARK = "#0077ed"
-UI_FIELD = "#f2f2f7"
-UI_GREEN = "#34c759"
-UI_SHADOW = "#e8e8ed"
-UI_LOG_BG = "#fbfbfd"
-UI_LOG_FG = "#1d1d1f"
+UI_BG = "#0b0b0d"
+UI_CARD = "#1c1c1e"
+UI_BORDER = "#2c2c2e"
+UI_TEXT = "#f5f5f7"
+UI_MUTED = "#98989d"
+UI_ACCENT = "#0a84ff"
+UI_ACCENT_DARK = "#409cff"
+UI_FIELD = "#2c2c2e"
+UI_GREEN = "#30d158"
+UI_SHADOW = "#000000"
+UI_LOG_BG = "#111113"
+UI_LOG_FG = "#e5e5ea"
 
 
 def resource_path(rel):
@@ -91,17 +92,35 @@ def _round_points(x1, y1, x2, y2, radius):
 
 
 class RoundedPanel(tk.Canvas):
-    """白色圆角卡片，内部放一个 tk.Frame。"""
+    """深色圆角卡片，内部放一个 tk.Frame。"""
 
-    def __init__(self, parent, height=180, radius=18, padding=20):
+    def __init__(self, parent, height=180, radius=18, padding=20,
+                 auto_height=True):
         super().__init__(parent, height=height, bg=UI_BG,
                          highlightthickness=0, bd=0)
         self.radius = radius
         self.padding = padding
+        self.auto_height = auto_height
+        self._height_job = None
         self.inner = tk.Frame(self, bg=UI_CARD)
         self._window = self.create_window(padding, padding, anchor="nw",
                                           window=self.inner)
         self.bind("<Configure>", self._redraw)
+        self.inner.bind("<Configure>", self._schedule_height)
+        self.inner.bind("<Map>", self._schedule_height)
+
+    def _schedule_height(self, event=None):
+        if not self.auto_height or self._height_job is not None:
+            return
+        self._height_job = self.after_idle(self._sync_height)
+
+    def _sync_height(self):
+        self._height_job = None
+        if not self.auto_height:
+            return
+        needed = self.inner.winfo_reqheight() + self.padding * 2
+        if abs(needed - self.winfo_height()) > 1:
+            self.configure(height=needed)
 
     def _redraw(self, event=None):
         width = max(self.winfo_width(), 10)
@@ -134,9 +153,11 @@ class RoundedButton(tk.Canvas):
         self._text = text
         self._command = command
         self._kind = kind
-        self._bw = width
-        self._bh = height
         self._font = font or ("Segoe UI", 10)
+        font_obj = tkfont.Font(font=self._font)
+        self._bw = max(width, font_obj.measure(text) + 34)
+        self._bh = max(height, font_obj.metrics("linespace") + 16)
+        self.configure(width=self._bw, height=self._bh)
         self._state = "normal"
         self._hover = False
         self.bind("<Button-1>", self._on_click)
@@ -147,14 +168,14 @@ class RoundedButton(tk.Canvas):
     def _palette(self):
         if self._state == "disabled":
             if self._kind == "primary":
-                return "#e5e5ea", "#8e8e93", ""
+                return "#2c2c2e", "#636366", ""
             if self._kind == "ghost":
-                return "", "#aeaeb2", ""
-            return UI_FIELD, "#c7c7cc", ""
+                return "", "#636366", ""
+            return UI_FIELD, "#636366", ""
         if self._kind == "primary":
             return (UI_ACCENT_DARK if self._hover else UI_ACCENT), "#ffffff", ""
         if self._kind == "secondary":
-            return ("#e8e8ed" if self._hover else UI_FIELD), UI_TEXT, ""
+            return ("#3a3a3c" if self._hover else UI_FIELD), UI_TEXT, ""
         return "", (UI_ACCENT if self._hover else UI_MUTED), ""
 
     def _draw(self):
@@ -217,7 +238,7 @@ class ToggleSwitch(tk.Canvas):
     def _draw(self):
         self.delete("all")
         on = bool(self.variable.get())
-        fill = UI_GREEN if on else "#e5e5ea"
+        fill = UI_GREEN if on else "#39393d"
         self.create_polygon(_round_points(1, 2, 43, 22, 10),
                             smooth=True, splinesteps=24,
                             fill=fill, outline="")
@@ -227,7 +248,10 @@ class ToggleSwitch(tk.Canvas):
 
 class PillEntry(tk.Canvas):
     def __init__(self, parent, textvariable, font):
-        super().__init__(parent, height=38, bg=UI_CARD,
+        font_obj = tkfont.Font(font=font)
+        self._height = max(38, font_obj.metrics("linespace") + 16)
+        self._entry_height = max(22, self._height - 14)
+        super().__init__(parent, height=self._height, bg=UI_CARD,
                          highlightthickness=0, bd=0)
         self._font = font
         self._focused = False
@@ -235,11 +259,12 @@ class PillEntry(tk.Canvas):
                               bg=UI_FIELD, fg=UI_TEXT, relief="flat",
                               bd=0, highlightthickness=0,
                               insertbackground=UI_TEXT,
-                              selectbackground="#d2e3fc",
-                              selectforeground=UI_TEXT,
+                              selectbackground=UI_ACCENT,
+                              selectforeground="#ffffff",
                               font=font)
-        self._window = self.create_window(12, 19, anchor="w",
-                                          window=self.entry, width=100, height=24)
+        self._window = self.create_window(12, self._height / 2, anchor="w",
+                                          window=self.entry, width=100,
+                                          height=self._entry_height)
         self.bind("<Configure>", self._redraw)
         self.bind("<Button-1>", lambda event: self.entry.focus_set())
         self.entry.bind("<FocusIn>", self._on_focus_in)
@@ -255,7 +280,9 @@ class PillEntry(tk.Canvas):
                             outline=(UI_ACCENT if self._focused else UI_FIELD),
                             width=1, tags="bg")
         self.tag_lower("bg")
-        self.itemconfigure(self._window, width=max(20, width - 24), height=24)
+        self.coords(self._window, 12, self._height / 2)
+        self.itemconfigure(self._window, width=max(20, width - 24),
+                           height=self._entry_height)
 
     def _on_focus_in(self, event):
         self._focused = True
@@ -1205,8 +1232,8 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("%s v%s" % (APP_NAME, APP_VERSION))
-        root.geometry("1080x900")
-        root.minsize(1000, 760)
+        root.geometry("1080x1000")
+        root.minsize(900, 620)
         icon = resource_path("assets/app.ico")
         if os.path.isfile(icon):
             try:
@@ -1226,16 +1253,19 @@ class App:
         self.source_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.mode_var = tk.StringVar(value=MODE_FAST)
-        self.copy_var = tk.StringVar(value=COPY_MODE_COPY)
-        self.workers_var = tk.StringVar(value=WORKER_CHOICES[0])
+        self.copy_var = tk.StringVar(value=COPY_MODE_MOVE)
+        self.workers_var = tk.StringVar(value=WORKER_CHOICES[-1])
 
         self._build_ui()
         self._load_config()
 
         self.root.update_idletasks()
-        width, height = 1080, 900
-        x = max(0, (self.root.winfo_screenwidth() - width) // 2)
-        y = max(0, (self.root.winfo_screenheight() - height) // 2)
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        width = max(860, min(1080, screen_w - 60))
+        height = max(620, min(1000, screen_h - 70))
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
         self.root.geometry("%dx%d+%d+%d" % (width, height, x, y))
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -1269,17 +1299,18 @@ class App:
                         darkcolor=UI_FIELD, arrowcolor=UI_MUTED,
                         padding=6, relief="flat")
         style.map("Apple.TCombobox",
-                  fieldbackground=[("readonly", UI_FIELD), ("active", "#ececf1")],
+                  fieldbackground=[("readonly", UI_FIELD), ("active", "#3a3a3c")],
                   selectbackground=[("readonly", UI_FIELD)],
                   selectforeground=[("readonly", UI_TEXT)],
                   arrowcolor=[("active", UI_ACCENT)])
         style.configure("Apple.Horizontal.TProgressbar",
-                        troughcolor="#e5e5ea", background=UI_ACCENT,
-                        bordercolor="#e5e5ea", lightcolor=UI_ACCENT,
+                        troughcolor="#2c2c2e", background=UI_ACCENT,
+                        bordercolor="#2c2c2e", lightcolor=UI_ACCENT,
                         darkcolor=UI_ACCENT, thickness=5)
-        style.configure("Vertical.TScrollbar", background="#d1d1d6",
-                        troughcolor=UI_BG, bordercolor=UI_BG,
-                        arrowcolor="#8e8e93")
+        style.configure("Dark.Vertical.TScrollbar",
+                        background="#3a3a3c", troughcolor=UI_BG,
+                        bordercolor=UI_BG, arrowcolor=UI_MUTED,
+                        lightcolor="#3a3a3c", darkcolor="#3a3a3c")
         self.root.option_add("*TCombobox*Listbox.background", UI_CARD)
         self.root.option_add("*TCombobox*Listbox.foreground", UI_TEXT)
         self.root.option_add("*TCombobox*Listbox.selectBackground", UI_ACCENT)
@@ -1318,10 +1349,46 @@ class App:
         link.bind("<Enter>", lambda e: link.configure(font=(ff, 10, "underline")))
         link.bind("<Leave>", lambda e: link.configure(font=(ff, 10)))
 
-        body = tk.Frame(self.root, bg=UI_BG)
-        body.pack(fill="both", expand=True, padx=30, pady=(6, 20))
+        body_outer = tk.Frame(self.root, bg=UI_BG)
+        body_outer.pack(fill="both", expand=True, padx=(30, 18), pady=(6, 16))
+        self.body_canvas = tk.Canvas(body_outer, bg=UI_BG,
+                                     highlightthickness=0, bd=0)
+        body_scroll = ttk.Scrollbar(body_outer, orient="vertical",
+                                    command=self.body_canvas.yview,
+                                    style="Dark.Vertical.TScrollbar")
+        self.body_canvas.configure(yscrollcommand=body_scroll.set)
+        body_scroll.pack(side="right", fill="y")
+        self.body_canvas.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(self.body_canvas, bg=UI_BG)
+        self._body_window = self.body_canvas.create_window(
+            (0, 0), window=body, anchor="nw")
+        self._body_sync_job = None
 
-        dir_card = RoundedPanel(body, height=282, padding=22)
+        def schedule_body_sync(event=None):
+            if self._body_sync_job is not None:
+                return
+            self._body_sync_job = self.root.after_idle(sync_body)
+
+        def sync_body():
+            self._body_sync_job = None
+            width = max(self.body_canvas.winfo_width(), 100)
+            body.update_idletasks()
+            need = max(body.winfo_reqheight(),
+                       self.body_canvas.winfo_height())
+            self.body_canvas.itemconfigure(self._body_window,
+                                           width=width, height=need)
+            self.body_canvas.configure(scrollregion=(0, 0, width, need))
+            if need > self.body_canvas.winfo_height() + 1:
+                if not body_scroll.winfo_ismapped():
+                    body_scroll.pack(side="right", fill="y")
+            elif body_scroll.winfo_ismapped():
+                body_scroll.pack_forget()
+
+        self.body_canvas.bind("<Configure>", schedule_body_sync)
+        body.bind("<Configure>", schedule_body_sync)
+        self.body_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+        dir_card = RoundedPanel(body, height=1, padding=22)
         dir_card.pack(fill="x", pady=(0, 14))
         dir_inner = dir_card.inner
         dir_inner.grid_columnconfigure(1, weight=1)
@@ -1337,7 +1404,7 @@ class App:
                  bg=UI_CARD, fg=UI_MUTED, font=(ff, 9)).grid(
             row=4, column=1, columnspan=3, sticky="w", pady=(4, 0))
 
-        opt_card = RoundedPanel(body, height=222, padding=22)
+        opt_card = RoundedPanel(body, height=1, padding=22)
         opt_card.pack(fill="x", pady=(0, 14))
         opt = opt_card.inner
         self._section_header(opt, "执行选项",
@@ -1393,7 +1460,8 @@ class App:
                  font=(ff, 9), width=40, anchor="e").pack(
             side="left", padx=(14, 0))
 
-        log_card = RoundedPanel(body, height=120, padding=18)
+        log_card = RoundedPanel(body, height=200, padding=18,
+                                auto_height=False)
         log_card.pack(fill="both", expand=True)
         log_inner = log_card.inner
         head = tk.Frame(log_inner, bg=UI_CARD)
@@ -1402,19 +1470,28 @@ class App:
                  font=(ff, 14, "bold")).pack(side="left")
         tk.Label(head, text="实时输出", bg=UI_CARD, fg=UI_MUTED,
                  font=(ff, 9)).pack(side="right")
-        self.log = scrolledtext.ScrolledText(
-            log_inner, height=10, wrap="none", font=(self.mono_family, 9),
+        log_box = tk.Frame(log_inner, bg=UI_LOG_BG)
+        log_box.pack(fill="both", expand=True, pady=(8, 0))
+        self.log = tk.Text(
+            log_box, height=10, wrap="none", font=(self.mono_family, 9),
             bg=UI_LOG_BG, fg=UI_LOG_FG, insertbackground=UI_TEXT,
             relief="flat", borderwidth=0, padx=12, pady=10,
-            highlightthickness=1, highlightbackground="#ececf1",
-            highlightcolor="#ececf1")
-        self.log.pack(fill="both", expand=True, pady=(8, 0))
+            highlightthickness=1, highlightbackground=UI_BORDER,
+            highlightcolor=UI_BORDER)
+        log_scroll = ttk.Scrollbar(log_box, orient="vertical",
+                                   command=self.log.yview,
+                                   style="Dark.Vertical.TScrollbar")
+        self.log.configure(yscrollcommand=log_scroll.set)
+        self.log.pack(side="left", fill="both", expand=True)
+        log_scroll.pack(side="right", fill="y")
         self.log.configure(state="disabled")
         self._append_logs([
             "素材归档去重工具 v%s 已就绪。" % APP_VERSION,
             "选择三个目录后，先“试运行”确认清单，再开始处理。",
             "处理完成后会自动校验，并在输出目录生成校验报告。",
         ])
+        self.root.after_idle(dir_card._sync_height)
+        self.root.after_idle(opt_card._sync_height)
 
     def _section_header(self, parent, title, subtitle, row=0, columns=4):
         box = tk.Frame(parent, bg=UI_CARD)
@@ -1515,17 +1592,27 @@ class App:
                 var.set(value)
             if cfg.get("mode") in MODES:
                 self.mode_var.set(cfg["mode"])
-            if cfg.get("copy_mode") in COPY_MODES:
-                self.copy_var.set(cfg["copy_mode"])
-            if cfg.get("workers") in WORKER_CHOICES:
-                self.workers_var.set(cfg["workers"])
+            try:
+                config_version = int(cfg.get("config_version", 0))
+            except (TypeError, ValueError):
+                config_version = 0
+            if config_version >= CONFIG_VERSION:
+                if cfg.get("copy_mode") in COPY_MODES:
+                    self.copy_var.set(cfg["copy_mode"])
+                if cfg.get("workers") in WORKER_CHOICES:
+                    self.workers_var.set(cfg["workers"])
+            else:
+                # 旧配置一次性迁移到新的默认处理方式。
+                self.copy_var.set(COPY_MODE_MOVE)
+                self.workers_var.set(WORKER_CHOICES[-1])
         except Exception:
             pass
 
     def _save_config(self):
         try:
             with open(config_path(), "w", encoding="utf-8") as f:
-                json.dump({"archive": self._path_text(self.archive_var),
+                json.dump({"config_version": CONFIG_VERSION,
+                           "archive": self._path_text(self.archive_var),
                            "source": self._path_text(self.source_var),
                            "output": self._path_text(self.output_var),
                            "mode": self.mode_var.get(),
@@ -1534,6 +1621,11 @@ class App:
                           f, ensure_ascii=False, indent=2)
         except Exception:
             pass
+
+    def _on_mousewheel(self, event):
+        canvas = getattr(self, "body_canvas", None)
+        if canvas is not None and canvas.winfo_exists():
+            canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
 
     def _append_logs(self, chunks):
         if not chunks:

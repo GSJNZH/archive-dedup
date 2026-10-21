@@ -84,8 +84,8 @@ def build_parser():
                         help="比对模式: turbo=大小+修改时间, fast=头尾采样哈希(默认), exact=全量MD5")
     parser.add_argument("--copy-mode", choices=["copy", "move"], default="copy",
                         help="copy=复制(默认，安全), move=同盘移动(会从原素材移除未归档文件)")
-    parser.add_argument("--workers", type=int, default=1,
-                        help="并发线程数 1-32，机械盘建议 1，SSD 可试 2-4（默认 1）")
+    parser.add_argument("--workers", type=int, default=8,
+                        help="并发线程数 1-32，默认 8；机械盘建议 1，SSD 可试 8")
     parser.add_argument("--dry-run", action="store_true",
                         help="试运行：只扫描比对并列出未归档文件，不复制/移动，也不创建输出目录")
     parser.add_argument("--verify", action="store_true",
