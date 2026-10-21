@@ -68,7 +68,7 @@
 | 文件 | 用途 |
 | --- | --- |
 | `archive_dedup.py` | GUI 主程序（tkinter），也是核心逻辑所在 |
-| `archive_dedup_cli.py` | 无界面 CLI 封装，复用 `worker()`，供 harness/计划任务/批处理调用 |
+| `archive_dedup_cli.py` | 无界面 CLI 封装，复用 `worker()`，供计划任务/批处理/无界面环境调用 |
 | `selftest.py` | 自测脚本：临时目录跑三种模式、复制、移动、排除规则 |
 | `archive_dedup_config.json` | GUI 自动生成的配置（路径、模式、并发），首次运行后出现 |
 
@@ -331,7 +331,7 @@ python -m py_compile archive_dedup.py archive_dedup_cli.py selftest.py
 - **复制很慢**：换 `--mode turbo` 先出清单；机械盘把 `--workers` 设为 1；把归档/原素材目录加入 Defender 排除项。
 - **移动失败“目标已存在”**：输出目录里有同名旧文件；换空目录或先清理。
 - **中文路径乱码**：在终端执行 `chcp 65001`，或设置 `PYTHONUTF8=1`。
-- **GUI 取消后按钮不恢复**：本版已修复取消时未回传完成事件的问题。
+- **GUI 取消后按钮不恢复**：新版已修复取消时未回传完成事件的问题。
 
 ---
 
